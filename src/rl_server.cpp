@@ -35,8 +35,6 @@ RLServer::RLServer(const char *_db_path, const char *_hostaddr, int _port, int d
     db_num(dbn), db_path(_db_path), hostaddr(_hostaddr), port(_port),
     fd(-1), clients_num(0)
 {
-    options = leveldb_options_create();
-    leveldb_options_set_create_if_missing(options, 1);
 
     read_options = leveldb_readoptions_create();
     write_options = leveldb_writeoptions_create();
@@ -44,20 +42,35 @@ RLServer::RLServer(const char *_db_path, const char *_hostaddr, int _port, int d
     char* err = 0;
 
     if(db_num<1){
+        options = (leveldb_options_t**)malloc(sizeof(void*));
+        policies = (leveldb_filterpolicy_t**)malloc(sizeof(void*));
+        options[0] = leveldb_options_create();
+        policies[0] = leveldb_filterpolicy_create_bloom(10);
+        leveldb_options_set_create_if_missing(options[0], 1);
+        leveldb_options_set_filter_policy(options[0], policies[0]);
+
         db=new leveldb_t*[1];
-        db[0] = leveldb_open(options, db_path.c_str(), &err);
+        db[0] = leveldb_open(options[0], db_path.c_str(), &err);
         if(err) {
             puts(err);
             free(err);
             exit(1);
         }
     }else{
+        options = (leveldb_options_t**)malloc(sizeof(void*) * db_num);
+        policies = (leveldb_filterpolicy_t**)malloc(sizeof(void*) * db_num);
+
         db=new leveldb_t*[db_num];
         char buf[16];
         for(int i=0;i<db_num;i++){
             int count = sprintf(buf, "/db-%03d", i);
+            options[i] = leveldb_options_create();
+            policies[i] = leveldb_filterpolicy_create_bloom(10);
+            leveldb_options_set_create_if_missing(options[i], 1);
+            leveldb_options_set_filter_policy(options[i], policies[i]);
+
             //TODO the db path
-            db[i] = leveldb_open(options, (db_path+std::string(buf,count)).c_str(), &err);
+            db[i] = leveldb_open(options[i], (db_path+std::string(buf,count)).c_str(), &err);
             if(err) {
                 puts(buf);
                 puts(err);
@@ -75,16 +88,21 @@ RLServer::RLServer(const char *_db_path, const char *_hostaddr, int _port, int d
 RLServer::~RLServer(){
     if(db_num<1){
         leveldb_close(db[0]);
+        leveldb_options_destroy(options[0]);
+        leveldb_filterpolicy_destroy(policies[0]);
     }else{
         for(int i=0;i<db_num;i++){
             leveldb_close(db[i]);
+            leveldb_options_destroy(options[i]);
+            leveldb_filterpolicy_destroy(policies[i]);
         }
     }
     delete[] db;
     if(loop) ev_loop_destroy(loop);
     close(fd);
 
-    leveldb_options_destroy(options);
+    free(options);
+    free(policies);
     leveldb_readoptions_destroy(read_options);
     leveldb_writeoptions_destroy(write_options);
 }
