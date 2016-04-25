@@ -15,6 +15,8 @@
 #include <netinet/in.h>  /* inet_ntoa */
 #include <arpa/inet.h>   /* inet_ntoa */
 
+
+#include <leveldb/cache.h>
 #include <leveldb/filter_policy.h>
 
 #include "rl_util.h"
@@ -45,9 +47,12 @@ RLServer::RLServer(const char *_db_path, const char *_hostaddr, int _port, int d
     leveldb::Status status;
 
     if(db_num<1){
-        options = new leveldb::Options[1];
+        options = new leveldb::Options[4];
         options[0].create_if_missing = true;
         options[0].filter_policy = leveldb::NewBloomFilterPolicy(10);
+        options[0].block_cache = leveldb::NewLRUCache(65536 * 1048576L);
+        options[0].write_buffer_size = 1024 * 1048576L;
+        options[0].block_size = 4096;
 
         db=new leveldb::DB*[1];
         status = leveldb::DB::Open(options[0], db_path.c_str(), &db[0]);
